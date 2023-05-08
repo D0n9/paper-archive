@@ -1,0 +1,259 @@
+# symbo1_com/2020-03-06-new-attack-surface-brought-by-chrome-with-cors.md at gh-pages · Symbo1/symbo1_com · GitHub
+| layout | title | categories |
+| --- | --- | --- |
+| 
+
+post
+
+ | 
+
+New attack surface brought by Chrome with CORS
+
+ | 
+
+articles
+
+ |
+
+{{ page.date | date\_to\_string }} - todaro
+
+导读
+--
+
+如果CORS配置Access-Control-Allow-Origin: * (或者Access-Control-Allow-Origin: hacker.com)，即使配置Access-Control-Allow-Credentials: false，攻击者还是可以通过chrome浏览器的缓存功能 (force-cache)读取到用户的敏感信息 (chrome浏览器不会修复这个问题)。
+
+CORS及SOP简介
+----------
+
+对CORS的介绍要从浏览器的同源策略开始说起，SOP全称为Same Origin Policy即同源策略，该策略是浏览器的一个安全基石，同源策略规定: 不同域的客户端脚本在没有明确授权的情况下，不能读写对方的资源。简单来说同源策略就是浏览器会阻止一个源与另一个源的资源交互。可以试想一下，如果没有同源策略，当你访问一个正常网站的时候又无意间打开了另一个恶意网站，恶意网站会从你刚刚访问的正常网站上窃取你全部的信息。
+
+SOP是一个很好的策略，在SOP被提出的时期，大家都默默地遵守着这个规定，但随着WEB应用的发展，有些网站由于自身业务的需求，需要实现一些跨域的功能能够让不同域的页面之间能够相互访问各自页面的内容。为了实现这个跨域需求，聪明的程序员想到了一种编码技术JSONP，该技术利用从客户端传入的json格式的返回值，在服务器端调用该接口处事先以定义函数的方式定义好json格式里参数值，并加载script标签调用该函数实现跨域。由此可见JSONP虽然好但他并非是在协议层面解决跨域问题，所以出现了很多安全问题。为了能更安全的进行跨域资源访问，CORS诞生了。
+
+CORS是H5提供的一种机制，WEB应用程序可以通过在HTTP报文中增加特定字段来告诉浏览器，哪些不同来源的服务器是有权访问本站资源。
+
+CORS已经存在的问题
+-----------
+
+CORS在设置Access-Control-Allow-Origin: hacker.com且Access-Control-Allow-Credentials: true的情况下，hacker.com可以读取用户在网站的敏感信息。
+
+CORS配合Chrome浏览器产生的新问题
+---------------------
+
+如果CORS配置Access-Control-Allow-Origin: * (或者Access-Control-Allow-Origin: hacker.com)，攻击者可以通过chrome浏览器的缓存功能读取到用户的敏感信息。
+
+Chrome的force-cache: 浏览器在HTTP缓存中查找匹配的请求。
+
+{% highlight html %} 如果有新的或旧的匹配，它将从缓存中返回。 如果不匹配，浏览器将发出正常的请求，并用下载的资源更新缓存。 {% endhighlight %}
+
+与之相似的还有only-if-cached: 浏览器在HTTP缓存中查找匹配的请求。
+
+{% highlight html %} 如果有新的或旧的匹配，将从缓存返回。 如果不匹配，浏览器将返回一个错误。 {% endhighlight %}
+
+force-cache和only-if-cached的差别在于，后者要求请求者和资源者需同源，否则会弹出如下错误:
+
+[![](https://camo.githubusercontent.com/2478f2ce005f6fd2f5b8ed398165ed3b4fb0371e718945349f9f721c89a91892/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f346d4b734c4e486e4959417a364f452e706e67)
+](https://camo.githubusercontent.com/2478f2ce005f6fd2f5b8ed398165ed3b4fb0371e718945349f9f721c89a91892/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f346d4b734c4e486e4959417a364f452e706e67)
+
+所以在Chrome的force-cache下，攻击者可以通过读取用户在浏览器的缓存来获取敏感信息。
+
+Chrome开发团队认为缓存就是这样的工作机制，他们不会对这个问题进行修复，而是要求开发者使用"Vary"头部或者用户使用"--enable-features=SplitCacheByNetworkIsolationKey"启动浏览器:
+
+[![](https://camo.githubusercontent.com/cf4a913645777a2ebd9b0cbcfebf5d7c8309720f8213ad7f9cb28009b4e5fa62/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7a624c7242596e7132444a6c566b352e706e67)
+](https://camo.githubusercontent.com/cf4a913645777a2ebd9b0cbcfebf5d7c8309720f8213ad7f9cb28009b4e5fa62/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7a624c7242596e7132444a6c566b352e706e67)
+
+火狐浏览器在上述场景中则不会返回敏感信息。
+
+CORS配合Chrome的几个测试案例
+-------------------
+
+1.  在最新版Chrome浏览器 (80.0.3987.132)中测试以下几种CORS配置:
+
+{% highlight html %} (1) Access-Control-Allow-Origin: * Access-Control-Allow-Credentials: false (2) Access-Control-Allow-Origin: hacker.com Access-Control-Allow-Credentials: true (3) Access-Control-Allow-Origin: hacker.com Access-Control-Allow-Credentials: false {% endhighlight %}
+
+2.  在最新版Firefox浏览器 (73.0.1)中测试如下CORS配置:
+
+{% highlight html %} Access-Control-Allow-Origin: * Access-Control-Allow-Credentials: false {% endhighlight %}
+
+网站 [http://192.168.31.154:8010/](http://192.168.31.154:8010/) 存在三种环境分别对应上述的CORS配置:
+
+{% highlight html %} [http://192.168.31.154:8010/index.php?type=1](http://192.168.31.154:8010/index.php?type=1) 对应 (1) [http://192.168.31.154:8010/index.php?type=2](http://192.168.31.154:8010/index.php?type=2) 对应 (2) [http://192.168.31.154:8010/index.php?type=3](http://192.168.31.154:8010/index.php?type=3) 对应 (3) {% endhighlight %}
+
+[![](https://camo.githubusercontent.com/ed80bc0ba7f0acc391a9f692ded246fab9846cfce9d9ce630f51b7d901ac34cc/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f704b4433314c754e436778364548612e706e67)
+](https://camo.githubusercontent.com/ed80bc0ba7f0acc391a9f692ded246fab9846cfce9d9ce630f51b7d901ac34cc/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f704b4433314c754e436778364548612e706e67)
+
+如图，输入admin/admin后会登录到用户账户，然后根据type=1跳转到/secret.php，type=2跳转到/secret2.php，type=3跳转到/secret3.php，都会输出登录用户的$_COOKIE\['auth'\]到当前页面:
+
+[![](https://camo.githubusercontent.com/9c34865cd1fff636699f76b9376d863f8db4d3ac8fee5305014552bf63a5ac1e/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f57446f58324c5a63724537553836702e706e67)
+](https://camo.githubusercontent.com/9c34865cd1fff636699f76b9376d863f8db4d3ac8fee5305014552bf63a5ac1e/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f57446f58324c5a63724537553836702e706e67)
+
+[![](https://camo.githubusercontent.com/193839ff9944250562d02ae996d1880c6ce5dc76ebf81a2547e06655b6cf5de6/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f4e6f6e3142477646525670396c49622e706e67)
+](https://camo.githubusercontent.com/193839ff9944250562d02ae996d1880c6ce5dc76ebf81a2547e06655b6cf5de6/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f4e6f6e3142477646525670396c49622e706e67)
+
+[![](https://camo.githubusercontent.com/600aa6db7ac5e4cb80f72e295e39f545529b514e2cf0380d976a0b506770c998/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f766971396d455946615774776547362e706e67)
+](https://camo.githubusercontent.com/600aa6db7ac5e4cb80f72e295e39f545529b514e2cf0380d976a0b506770c998/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f766971396d455946615774776547362e706e67)
+
+另外一个网站 [http://192.168.31.154:8001/](http://192.168.31.154:8001/) 用来模拟攻击者网站/poc.html负责读取用户的secret值，如果能通过跨域读取到该值，则输出到RESULT框中:
+
+[![](https://camo.githubusercontent.com/fb7781f35e1261fc52a45a10a907688de73fd4f150ca6cdae8233c1e48cf3a9a/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f507851596d57534a457a4f704363482e706e67)
+](https://camo.githubusercontent.com/fb7781f35e1261fc52a45a10a907688de73fd4f150ca6cdae8233c1e48cf3a9a/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f507851596d57534a457a4f704363482e706e67)
+
+测试正式开始！
+
+\[1\] 先访问 [http://192.168.31.154:8010/index.php?type=1](http://192.168.31.154:8010/index.php?type=1) 输入admin/admin跳转到 [http://192.168.31.154:8010/secret.php](http://192.168.31.154:8010/secret.php) 能够正确输出secret值:
+
+[![](https://camo.githubusercontent.com/db6703d3a8157fbfcf4a86acb5ed8a1ab32594b7943e1401056449d00cb4caf2/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7355777835504834717a656d534b472e706e67)
+](https://camo.githubusercontent.com/db6703d3a8157fbfcf4a86acb5ed8a1ab32594b7943e1401056449d00cb4caf2/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7355777835504834717a656d534b472e706e67)
+
+在1 (1) 模式下通过CORS配置问题+Chrome浏览器缓存读取secret值 ("Disable cache"默认关闭)，点击"Steal secret":
+
+[![](https://camo.githubusercontent.com/8c5552968798d7aae0f8e4f82e5ec2e04713a5911f7748ac58a2633aaa9ae746/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f53366f513357457a596d63784874392e706e67)
+](https://camo.githubusercontent.com/8c5552968798d7aae0f8e4f82e5ec2e04713a5911f7748ac58a2633aaa9ae746/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f53366f513357457a596d63784874392e706e67)
+
+可以看到请求包不带cookie访问:
+
+[![](https://camo.githubusercontent.com/181774dba59396ac7ffad094442f041e38601717c2f80e439548803097914f01/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f656777585a6e553338624a6a6970542e706e67)
+](https://camo.githubusercontent.com/181774dba59396ac7ffad094442f041e38601717c2f80e439548803097914f01/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f656777585a6e553338624a6a6970542e706e67)
+
+返回包如下:
+
+[![](https://camo.githubusercontent.com/8194954178028c299b8ceeeaffde1c1a82aec5da5e44192f233bc90b19f45a65/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6573716f48376c67636b44523254702e706e67)
+](https://camo.githubusercontent.com/8194954178028c299b8ceeeaffde1c1a82aec5da5e44192f233bc90b19f45a65/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6573716f48376c67636b44523254702e706e67)
+
+成功跨域读取secret值并显示在RESULT中:
+
+[![](https://camo.githubusercontent.com/82d99cfcb012abecf18a425ad411673edbd1cc80e50bb43bb6821006e1ece52f/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f795a374d53563571446f454b5258422e706e67)
+](https://camo.githubusercontent.com/82d99cfcb012abecf18a425ad411673edbd1cc80e50bb43bb6821006e1ece52f/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f795a374d53563571446f454b5258422e706e67)
+
+在Chrome中按Ctrl+Shift+i，在"Network"中勾选"Disable cache"禁止缓存功能:
+
+[![](https://camo.githubusercontent.com/3cc3a9aaeaae48c594c5c5d66d6161ead78c75ffd72e2f5edc6a9ce53ff3b0d5/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f3531377444477053714e63414849572e706e67)
+](https://camo.githubusercontent.com/3cc3a9aaeaae48c594c5c5d66d6161ead78c75ffd72e2f5edc6a9ce53ff3b0d5/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f3531377444477053714e63414849572e706e67)
+
+刷新 [http://192.168.31.154:8001/poc.html](http://192.168.31.154:8001/poc.html) 重新点击"Steal secret"，无法读取到secret值。
+
+如果再次关闭"Disable cache"，需要在登录状态下重新访问一次 [http://192.168.31.154:8010/secret.php](http://192.168.31.154:8010/secret.php) 让浏览器缓存该结果，之后才能重新读取secret的值。
+
+\[2\] 访问 [http://192.168.31.154:8010/index.php?type=2](http://192.168.31.154:8010/index.php?type=2) 输入admin/admin跳转到 [http://192.168.31.154:8010/secret2.php](http://192.168.31.154:8010/secret2.php) 能够正确输出secret值:
+
+[![](https://camo.githubusercontent.com/4c10428228713f6d3ee85d05e4baf7e61c5bc87bb782a160c9338e8e61464ad6/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6c357561667638656f7031695573742e706e67)
+](https://camo.githubusercontent.com/4c10428228713f6d3ee85d05e4baf7e61c5bc87bb782a160c9338e8e61464ad6/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6c357561667638656f7031695573742e706e67)
+
+在1 (2)模式下通过常规CORS配置漏洞读取secret值，点击"Steal secret":
+
+[![](https://camo.githubusercontent.com/5787d219653f2c543f5756333dc7556a5d46e80f23c65cd098f16de9d16573d6/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6939624852313643357347714a50342e706e67)
+](https://camo.githubusercontent.com/5787d219653f2c543f5756333dc7556a5d46e80f23c65cd098f16de9d16573d6/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6939624852313643357347714a50342e706e67)
+
+可以看到请求包带cookie访问:
+
+[![](https://camo.githubusercontent.com/1e31a40c03744b306cb90380292d0894ca57c4ecbe4f84506f15bc5741c7fcda/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7a52467436327165425870786761512e706e67)
+](https://camo.githubusercontent.com/1e31a40c03744b306cb90380292d0894ca57c4ecbe4f84506f15bc5741c7fcda/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7a52467436327165425870786761512e706e67)
+
+返回包如下:
+
+[![](https://camo.githubusercontent.com/921a865a159a8d01af8f287096fe4dd2c725cdacba0e7aaaa117c1bda48fcfb2/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f373533705159667a47644f467142482e706e67)
+](https://camo.githubusercontent.com/921a865a159a8d01af8f287096fe4dd2c725cdacba0e7aaaa117c1bda48fcfb2/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f373533705159667a47644f467142482e706e67)
+
+成功跨域读取secret值并显示在RESULT中:
+
+[![](https://camo.githubusercontent.com/d555dbeab2d5fed28fea404e0efee75890fd44f010b43794a0726bf4967db40b/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f584732737851536b756d4d4c6864612e706e67)
+](https://camo.githubusercontent.com/d555dbeab2d5fed28fea404e0efee75890fd44f010b43794a0726bf4967db40b/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f584732737851536b756d4d4c6864612e706e67)
+
+这就是一个经典的CORS配置错误导致的跨域敏感信息读取。
+
+\[3\] 访问 [http://192.168.31.154:8010/index.php?type=3](http://192.168.31.154:8010/index.php?type=3) 输入admin/admin跳转到 [http://192.168.31.154:8010/secret3.php](http://192.168.31.154:8010/secret3.php) 能够正确输出secret:
+
+[![](https://camo.githubusercontent.com/f27627115134c63f13e4cd203e3d46e1adc21cff45cfc977eeef413e0d0852c6/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f37387958527a6c6e4f4571487235682e706e67)
+](https://camo.githubusercontent.com/f27627115134c63f13e4cd203e3d46e1adc21cff45cfc977eeef413e0d0852c6/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f37387958527a6c6e4f4571487235682e706e67)
+
+在1 (3)模式下尝试通过CORS读取secret值，点击"Steal secret":
+
+[![](https://camo.githubusercontent.com/f40836955c2210f0d624e7d0865b1b3a76563e0b8730096572e7d74d96628cc8/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6f734e4c38693452787a64666d5a4b2e706e67)
+](https://camo.githubusercontent.com/f40836955c2210f0d624e7d0865b1b3a76563e0b8730096572e7d74d96628cc8/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6f734e4c38693452787a64666d5a4b2e706e67)
+
+可以看到console的报错信息:
+
+[![](https://camo.githubusercontent.com/2df7921e72e852940b3beee1f525149d58413be32e8db1506547c9e7fbd0f008/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7a5334545a6d426f554e6c36416a662e706e67)
+](https://camo.githubusercontent.com/2df7921e72e852940b3beee1f525149d58413be32e8db1506547c9e7fbd0f008/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7a5334545a6d426f554e6c36416a662e706e67)
+
+因为Access-Control-Allow-Credentials: false:
+
+[![](https://camo.githubusercontent.com/a4592448dd44932ae22d5cd9efdd44f86d50bdb22b1e3bdd3fcc0db2a74c6048/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f344f44367761357147693353584b652e706e67)
+](https://camo.githubusercontent.com/a4592448dd44932ae22d5cd9efdd44f86d50bdb22b1e3bdd3fcc0db2a74c6048/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f344f44367761357147693353584b652e706e67)
+
+所以尝试读取secret值失败。
+
+\[4\] 在Firefox浏览器中先访问 [http://192.168.31.154:8010/index.php?type=1](http://192.168.31.154:8010/index.php?type=1) 输入admin/admin跳转到 [http://192.168.31.154:8010/secret.php](http://192.168.31.154:8010/secret.php) 能够正确输出secret:
+
+[![](https://camo.githubusercontent.com/268d3adaf1dac2a36456c3a1a74531b3d5f6d06a0747ac215bc5306c2198e182/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6442516c41533773527872657466392e706e67)
+](https://camo.githubusercontent.com/268d3adaf1dac2a36456c3a1a74531b3d5f6d06a0747ac215bc5306c2198e182/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6442516c41533773527872657466392e706e67)
+
+在2模式下尝试通过CORS配置问题+Firefox浏览器缓存读取secret值，点击"Steal secret":
+
+[![](https://camo.githubusercontent.com/cefcb3c058cd8f5f58030e32990d6b2c1201d2ed82baa050077e44688d4ae7f8/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f734450756948415651524a795849712e706e67)
+](https://camo.githubusercontent.com/cefcb3c058cd8f5f58030e32990d6b2c1201d2ed82baa050077e44688d4ae7f8/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f734450756948415651524a795849712e706e67)
+
+[http://192.168.31.154:8001/poc.html](http://192.168.31.154:8001/poc.html) 的内容需要稍作修改:
+
+{% highlight html %} 将第38行const secret = htmlDoc.getElementsByName("secret")\[0\].text修改为 const secret = htmlDoc.getElementsByName("secret").text {% endhighlight %}
+
+可以看到请求包不带cookie访问:
+
+[![](https://camo.githubusercontent.com/50af17c17632d31e8aed9f12d0a24c227b22f72b3e62386e94f3058ce7ad5e8d/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6c464b345a5168557773794f7142592e706e67)
+](https://camo.githubusercontent.com/50af17c17632d31e8aed9f12d0a24c227b22f72b3e62386e94f3058ce7ad5e8d/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f6c464b345a5168557773794f7142592e706e67)
+
+返回包如下:
+
+[![](https://camo.githubusercontent.com/ab7ed2a5d9a18324695fc97128987feb4bc22c527200a8e9b3241bad3f043bd1/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7a714f326a4c736553464742676e6b2e706e67)
+](https://camo.githubusercontent.com/ab7ed2a5d9a18324695fc97128987feb4bc22c527200a8e9b3241bad3f043bd1/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f7a714f326a4c736553464742676e6b2e706e67)
+
+无法读取到secret的值:
+
+[![](https://camo.githubusercontent.com/e6993d9a74d518d8e903cfbd2a9cdc369266ac80339dada0526e870e8fc0c0f9/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f44534758336675794c6e4e5a4652382e706e67)
+](https://camo.githubusercontent.com/e6993d9a74d518d8e903cfbd2a9cdc369266ac80339dada0526e870e8fc0c0f9/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f44534758336675794c6e4e5a4652382e706e67)
+
+如果在Firefox中通过1 (2) 的模式 (即经典CORS漏洞配置问题) 则能读取到secret的值:
+
+[![](https://camo.githubusercontent.com/a7c4295c648a0237eafb6e8f34438b7f58018ebe61b49f15d054013818b43376/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f61544c5866344247656b50517479352e706e67)
+](https://camo.githubusercontent.com/a7c4295c648a0237eafb6e8f34438b7f58018ebe61b49f15d054013818b43376/68747470733a2f2f737461746963732e73796d626f312e636f6d2f66696c652f73796d626f312f61727469636c652d696d616765732f61544c5866344247656b50517479352e706e67)
+
+真实案例
+----
+
+Keybase提供了一个API，该API允许用户对其他用户进行查找，但是没有做token检验。当已登录用户访问该接口时会返回用户的敏感信息。
+
+由于Keybase的CORS规则配置成如下:
+
+{% highlight html %} Access-Control-Allow-Origin: * Access-Control-Allow-Methods: GET Access-Control-Allow-Headers: Content-Type, Authorization, Content-Length, X-Requested-With Access-Control-Allow-Credentials: false {% endhighlight %}
+
+所以攻击者可以配合Chrome浏览器缓存问题跨域读取该值，最终payload如下:
+
+{% highlight html %}
+
+<script> var url = "[https://keybase.io/_/api/1.0/user/lookup.json?username={YOUR_USERNAME}](https://keybase.io/_/api/1.0/user/lookup.json?username={YOUR_USERNAME})"; fetch(url, { method: 'GET', cache: 'force-cache' }); </script> {% endhighlight %}
+
+用户一旦访问该页面，攻击者即可获取到其敏感信息。
+
+一个延伸
+----
+
+以往在测试一些形似jsonp接口却不带callback时可能就只有放弃了，现在可以看看是不是有CORS配置Access-Control-Allow-Origin: *的存在，还有一些app里的H5场景。
+
+总结
+--
+
+CORS如果配置Access-Control-Allow-Origin: * (或者Access-Control-Allow-Origin: hacker.com)，攻击者可以通过chrome浏览器的缓存功能 (force-cache) 读取到用户的敏感信息。
+
+开发者需要设置Access-Control-Allow-Origin: company.com，或者使用"Vary"头部。
+
+普通用户如果没有特殊需求，可以给Chrome浏览器启动添加"--enable-features=SplitCacheByNetworkIsolationKey"参数，或者勾选"Disable cache"。
+
+有两个线上测试环境:
+
+*   [](https://victime.docker.bi.tk/)[https://victime.docker.bi.tk/](https://victime.docker.bi.tk/)
+*   [](http://87.98.164.31/malicious.html)[http://87.98.164.31/malicious.html](http://87.98.164.31/malicious.html)
+
+测试代码打包在[files.rar](https://statics.symbo1.com/file/symbo1/misc/files.rar)中。
+
+参考信息
+
+{% highlight html %} [https://enumerated.wordpress.com/2019/12/24/sop-bypass-via-browser-cache/](https://enumerated.wordpress.com/2019/12/24/sop-bypass-via-browser-cache/) [https://bugs.chromium.org/p/chromium/issues/detail?id=988319](https://bugs.chromium.org/p/chromium/issues/detail?id=988319) [https://github.com/MayurUdiniya/Chrome-CORS](https://github.com/MayurUdiniya/Chrome-CORS) [https://www.freebuf.com/company-information/216754.html](https://www.freebuf.com/company-information/216754.html) [https://www.w3cschool.cn/fetch\_api/fetch\_api-hokx2khz.html](https://www.w3cschool.cn/fetch_api/fetch_api-hokx2khz.html) {% endhighlight %}
